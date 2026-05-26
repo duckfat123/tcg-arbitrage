@@ -1,8 +1,9 @@
 import csv
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Generator, Optional
 
 from .models import Card, EbayComp, Opportunity, TcgPrice
 
@@ -12,14 +13,23 @@ DB_PATH = os.getenv(
 )
 
 
-def get_conn() -> sqlite3.Connection:
+@contextmanager
+def get_db() -> Generator[sqlite3.Connection, None, None]:
+    """Open a connection, commit on success, rollback on error, always close."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS watchlist (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +87,7 @@ def init_db() -> None:
 
 
 def seed_watchlist_from_csv(csv_path: str) -> int:
-    with get_conn() as conn:
+    with get_db() as conn:
         existing = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
         if existing > 0:
             return 0
@@ -85,7 +95,7 @@ def seed_watchlist_from_csv(csv_path: str) -> int:
     count = 0
     with open(csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        with get_conn() as conn:
+        with get_db() as conn:
             for row in reader:
                 override = row.get("ebay_search_query_override", "").strip() or None
                 conn.execute(
@@ -102,7 +112,7 @@ def seed_watchlist_from_csv(csv_path: str) -> int:
 
 
 def get_watchlist(game: Optional[str] = None) -> list[Card]:
-    with get_conn() as conn:
+    with get_db() as conn:
         if game:
             rows = conn.execute(
                 "SELECT * FROM watchlist WHERE active=1 AND game=?", (game,)
@@ -121,7 +131,7 @@ def get_watchlist(game: Optional[str] = None) -> list[Card]:
 
 
 def add_to_watchlist(card: Card) -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.execute(
             "INSERT INTO watchlist (card_name, set_name, game, ebay_query_override) VALUES (?, ?, ?, ?)",
             (card.card_name, card.set_name, card.game, card.ebay_query_override),
@@ -135,7 +145,7 @@ def get_cached_tcg_price(
     max_age_hours: int = 24,
 ) -> Optional[TcgPrice]:
     cutoff = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
-    with get_conn() as conn:
+    with get_db() as conn:
         if set_name:
             row = conn.execute(
                 "SELECT * FROM tcg_prices WHERE card_name=? AND game=? AND set_name=? AND fetched_at > ?"
@@ -161,7 +171,7 @@ def get_cached_tcg_price(
 
 
 def save_tcg_price(price: TcgPrice) -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.execute(
             "INSERT INTO tcg_prices (card_name, set_name, game, market_price, low_price, fetched_at)"
             " VALUES (?, ?, ?, ?, ?, ?)",
@@ -178,7 +188,7 @@ def save_tcg_price(price: TcgPrice) -> None:
 
 def get_cached_ebay_comp(query: str, max_age_hours: int = 6) -> Optional[EbayComp]:
     cutoff = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
-    with get_conn() as conn:
+    with get_db() as conn:
         row = conn.execute(
             "SELECT * FROM ebay_comps WHERE search_query=? AND fetched_at > ?"
             " ORDER BY fetched_at DESC LIMIT 1",
@@ -198,7 +208,7 @@ def get_cached_ebay_comp(query: str, max_age_hours: int = 6) -> Optional[EbayCom
 
 
 def save_ebay_comp(comp: EbayComp) -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.execute(
             "INSERT INTO ebay_comps (search_query, avg_price, median_price, min_price, max_price, num_results, fetched_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -215,7 +225,7 @@ def save_ebay_comp(comp: EbayComp) -> None:
 
 
 def save_opportunity(opp: Opportunity) -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.execute(
             """INSERT INTO opportunities
                (card_name, set_name, game, tcg_market, ebay_median, tcg_net_payout,
@@ -238,7 +248,7 @@ def save_opportunity(opp: Opportunity) -> None:
 
 
 def log_scan(cards_scanned: int, opps_found: int) -> None:
-    with get_conn() as conn:
+    with get_db() as conn:
         conn.execute(
             "INSERT INTO scan_log (cards_scanned, opps_found) VALUES (?, ?)",
             (cards_scanned, opps_found),
@@ -246,7 +256,7 @@ def log_scan(cards_scanned: int, opps_found: int) -> None:
 
 
 def get_last_scans(limit: int = 10) -> list[dict]:
-    with get_conn() as conn:
+    with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM scan_log ORDER BY scanned_at DESC LIMIT ?", (limit,)
         ).fetchall()
@@ -254,7 +264,7 @@ def get_last_scans(limit: int = 10) -> list[dict]:
 
 
 def get_recent_opportunities(limit: int = 50) -> list[Opportunity]:
-    with get_conn() as conn:
+    with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM opportunities ORDER BY scanned_at DESC LIMIT ?", (limit,)
         ).fetchall()

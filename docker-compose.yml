@@ -21,10 +21,10 @@ services:
 
   # ─── Dashboard ────────────────────────────────────────────────────────────
   # FastAPI web UI — reads from same SQLite volume. Auto-refreshes every 2min.
-  # Access at: http://10.10.0.20:8080
+  # Access at: http://10.10.0.20:9000
   dashboard:
     build: .
-    command: uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
+    command: uvicorn dashboard.app:app --host 0.0.0.0 --port 9000
     volumes:
       - tcg_data:/app/data
     env_file: .env
@@ -33,7 +33,7 @@ services:
       OUTPUT_DIR: /app/data/output
       SCAN_INTERVAL_HOURS: "8"
     ports:
-      - "8080:8080"
+      - "9000:9000"
     restart: unless-stopped
 
 volumes:
