@@ -6,7 +6,10 @@ from typing import Optional
 
 from .models import Card, EbayComp, Opportunity, TcgPrice
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "arbitrage.db")
+DB_PATH = os.getenv(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "arbitrage.db"),
+)
 
 
 def get_conn() -> sqlite3.Connection:
@@ -61,6 +64,13 @@ def init_db() -> None:
                 gross_profit REAL,
                 roi_pct REAL,
                 ebay_comps_count INTEGER,
+                scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS scan_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cards_scanned INTEGER NOT NULL,
+                opps_found INTEGER NOT NULL,
                 scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -225,6 +235,22 @@ def save_opportunity(opp: Opportunity) -> None:
                 opp.scanned_at.isoformat(),
             ),
         )
+
+
+def log_scan(cards_scanned: int, opps_found: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO scan_log (cards_scanned, opps_found) VALUES (?, ?)",
+            (cards_scanned, opps_found),
+        )
+
+
+def get_last_scans(limit: int = 10) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM scan_log ORDER BY scanned_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_recent_opportunities(limit: int = 50) -> list[Opportunity]:

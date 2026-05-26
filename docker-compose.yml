@@ -1,0 +1,40 @@
+services:
+
+  # ─── Scanner ──────────────────────────────────────────────────────────────
+  # Runs run_scan() on a schedule. Writes to shared SQLite volume.
+  # Default: every 8h (3x/day) — tune SCAN_INTERVAL_HOURS to protect free API limits.
+  #
+  #   tcgapi.dev free tier:  100 calls/day  → 30 cards × 1 TCG fetch/day (24h cache) = ~30 ✅
+  #   RapidAPI eBay free:    varies          → 30 cards × 3 scans/day = ~90 calls/day
+  #   If hitting RapidAPI limits: set SCAN_INTERVAL_HOURS=12 (2x/day = ~60 eBay calls)
+  scanner:
+    build: .
+    command: python scheduler.py
+    volumes:
+      - tcg_data:/app/data
+    env_file: .env
+    environment:
+      DB_PATH: /app/data/arbitrage.db
+      OUTPUT_DIR: /app/data/output
+      SCAN_INTERVAL_HOURS: "8"
+    restart: unless-stopped
+
+  # ─── Dashboard ────────────────────────────────────────────────────────────
+  # FastAPI web UI — reads from same SQLite volume. Auto-refreshes every 2min.
+  # Access at: http://10.10.0.20:8080
+  dashboard:
+    build: .
+    command: uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
+    volumes:
+      - tcg_data:/app/data
+    env_file: .env
+    environment:
+      DB_PATH: /app/data/arbitrage.db
+      OUTPUT_DIR: /app/data/output
+      SCAN_INTERVAL_HOURS: "8"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  tcg_data:

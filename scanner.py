@@ -8,6 +8,7 @@ from core.database import (
     get_cached_ebay_comp,
     get_cached_tcg_price,
     get_watchlist,
+    log_scan,
     save_ebay_comp,
     save_opportunity,
     save_tcg_price,
@@ -130,6 +131,7 @@ def run_scan(
 
     opportunities.sort(key=lambda o: o.gross_profit, reverse=True)
 
+    log_scan(cards_scanned=len(watchlist), opps_found=len(opportunities))
     logger.info(
         f"Scan complete — {len(watchlist)} scanned, {len(opportunities)} found "
         f"({skipped_price} price skip, {skipped_comps} comp skip, {skipped_threshold} below threshold)"

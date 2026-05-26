@@ -4,7 +4,10 @@ from datetime import datetime
 
 from core.models import Opportunity
 
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "output")
+OUTPUT_DIR = os.getenv(
+    "OUTPUT_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "output"),
+)
 
 _FIELDS = [
     "card_name", "set_name", "game", "tcg_market", "ebay_median",
